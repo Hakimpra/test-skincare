@@ -17,5 +17,4 @@ you should import the library first in terminal
 ### And here we go 
 	go run main.go
 	
-	
-### you have test with app insomnia and your impor file name insom... extension json
+	# you have test with app insomnia and your impor file name insom... extension json
