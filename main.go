@@ -24,9 +24,33 @@ type user struct {
 	Password  string
 	Email     string
 }
-
+type Treatment  struct {
+	ID        string
+	Title string 
+	Harga  uint32 
+	Keterangan  string 
+}
+type PesanTreatment  struct {
+	ID        string
+	// Username string 
+	// Title string 
+	User_id string 
+	Treatment_id  uint32 
+	Total_bayar  string 
+	// Keterangan string 
+}
+type ResponseTreatment struct {
+	Status  int    `json:"status"`
+	Message string `json:"message"`
+	Data    []Treatment 
+}
+type ResponsePesanTreatment struct {
+	Status  int    `json:"status"`
+	Message string `json:"message"`
+	Data    []PesanTreatment 
+}
 func connect_db() {
-	db, err = sql.Open("mysql", "root:root@tcp(127.0.0.1:3306)/go_api")
+	db, err = sql.Open("mysql", "root:wakidij@tcp(127.0.0.1:3306)/test-skincare2")
 
 	if err != nil {
 		log.Fatalln(err)
@@ -42,6 +66,9 @@ func routes() {
 	http.HandleFunc("/register", register)
 	http.HandleFunc("/login", login)
 	http.HandleFunc("/logout", logout)
+	http.HandleFunc("/viewtreatment", viewtreatment)
+	http.HandleFunc("/pesantreatment", pesantreatment)
+	http.HandleFunc("/viewpesantreatment", viewpesantreatment)
 }
 
 func main() {
@@ -76,8 +103,6 @@ func QueryUser(username string) user {
 	err = db.QueryRow(`
 		SELECT id, 
 		username, 
-		first_name, 
-		last_name, 
 		password,
 		email
 		FROM users WHERE username=?
@@ -85,12 +110,115 @@ func QueryUser(username string) user {
 		Scan(
 			&users.ID,
 			&users.Username,
-			&users.FirstName,
-			&users.LastName,
 			&users.Password,
 			&users.Email,
 		)
 	return users
+}
+func viewpesantreatment(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "GET" {
+		return
+	}
+
+	var response ResponsePesanTreatment
+	var pesantreatment PesanTreatment
+	var arr_pesantreatment []PesanTreatment
+
+
+	err := r.ParseMultipartForm(4096)
+
+	id := r.FormValue("id")
+
+	/*rows, err := db.Query("SELECT pesantreatment.id, users.username, treatment.title, pesantreatment.total_bayar, treatment.keterangan from pesantreatment left JOIN treatment ON treatment.id = pesantreatment.treatment_id left JOIN users ON users.id = pesantreatment.user_id where pesantreatment.user_id=?",
+		id,
+	)*/
+	rows, err := db.Query("SELECT * from pesantreatment where id=?",
+		id,
+	)
+
+	if err != nil {
+		panic(err)
+	}
+	for rows.Next() {
+		// if err := rows.Scan(&pesantreatment.ID, &pesantreatment.Username, &pesantreatment.Title, &pesantreatment.Total_bayar, &pesantreatment.Keterangan); err != nil {
+		if err := rows.Scan(&pesantreatment.ID, &pesantreatment.User_id, &pesantreatment.Treatment_id, &pesantreatment.Total_bayar); err != nil {
+			log.Fatal(err.Error())
+
+		} else {
+			arr_pesantreatment = append(arr_pesantreatment, pesantreatment)
+		}
+	}
+
+	response.Status = 1
+	response.Message = "Success"
+	response.Data = arr_pesantreatment
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+
+}
+func pesantreatment(w http.ResponseWriter, r *http.Request) {
+
+	var response ResponseTreatment
+	
+
+	err := r.ParseMultipartForm(4096)
+	if err != nil {
+		panic(err)
+	}
+
+	user_id := r.FormValue("user_id")
+	treatment_id := r.FormValue("treatment_id")
+	total_bayar := r.FormValue("total_bayar")
+
+	_, err = db.Exec("INSERT INTO pesantreatment (user_id, treatment_id, total_bayar) values (?,?,?)",
+		user_id,
+		treatment_id,
+		total_bayar,
+	)
+
+	if err != nil {
+		log.Print(err)
+	}
+
+	response.Status = 1
+	response.Message = "Success Add"
+	log.Print("Insert pesanan treatment success")
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+
+}
+func viewtreatment(w http.ResponseWriter, r *http.Request) {
+
+	var response ResponseTreatment
+	var treatment Treatment
+	var arr_treatmment []Treatment
+	if r.Method != "GET" {
+		return
+	}
+
+	rows, err := db.Query("Select id,title,harga,keterangan from treatment")
+	if err != nil {
+		log.Print(err)
+	}
+
+
+	for rows.Next() {
+		if err := rows.Scan(&treatment.ID, &treatment.Title, &treatment.Harga, &treatment.Keterangan); err != nil {
+			log.Fatal(err.Error())
+
+		} else {
+			arr_treatmment = append(arr_treatmment, treatment)
+		}
+	}
+
+	response.Status = 1
+	response.Message = "Success"
+	response.Data = arr_treatmment
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
 }
 
 func register(w http.ResponseWriter, r *http.Request) {
@@ -101,19 +229,17 @@ func register(w http.ResponseWriter, r *http.Request) {
 
 	username := r.FormValue("username")
 	email := r.FormValue("email")
-	first_name := r.FormValue("first_name")
-	last_name := r.FormValue("last_name")
 	password := r.FormValue("password")
 	fmt.Println(username)
-	users := QueryUser(first_name)
+	users := QueryUser(username)
 
 	if (user{}) == users {
 		hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 
 		if len(hashedPassword) != 0 && checkErr(w, r, err) {
-			stmt, err := db.Prepare("INSERT INTO users SET username=?, password=?, first_name=?, last_name=?, email=?")
+			stmt, err := db.Prepare("INSERT INTO users SET username=?, password=?, email=?")
 			if err == nil {
-				_, err := stmt.Exec(&username, &hashedPassword, &first_name, &last_name, &email)
+				_, err := stmt.Exec(&username, &hashedPassword, &email)
 				if err != nil {
 					http.Error(w, err.Error(), http.StatusInternalServerError)
 					return
@@ -152,7 +278,7 @@ func login(w http.ResponseWriter, r *http.Request) {
 		//login success
 		session := sessions.Start(w, r)
 		session.Set("username", users.Username)
-		session.Set("name", users.FirstName)
+		// session.Set("name", users.FirstName)
 		res := statusRes{Status: 200, Msg: "berhasil login"}
 		json.NewEncoder(w).Encode(res)
 	} else {
